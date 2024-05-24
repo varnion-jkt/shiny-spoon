@@ -5,7 +5,7 @@ jobs:
   build-and-run-test:
     executor:
       name: go/default
-      tag: "1.16"
+      tag: '1.16'
     steps:
       - checkout
       - go/load-cache
@@ -24,9 +24,9 @@ jobs:
       - run:
           name: Build and push Docker image
           command: |
-            docker build -t godemo1.azurecr.io/go-demo:latest .
-            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin godemo1.azurecr.io
-            docker push godemo1.azurecr.io/go-demo:latest
+            echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin registry.hub.docker.com
+            docker build -t registry.hub.docker.com/rizulhanif/golang:latest .
+            docker push registry.hub.docker.com/rizulhanif/golang:latest
 workflows:
   test-and-deploy:
     jobs:
