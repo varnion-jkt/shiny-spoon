@@ -1,11 +1,11 @@
-FROM golang:1.18.3-alpine3.16
+FROM alpine:3.19.1
 
-RUN mkdir /app
-
-ADD . /app
+LABEL com.centurylinklabs.watchtower.enable=true
+LABEL maintainer="Rizul Hanif"
 
 WORKDIR /app
+EXPOSE 8080
 
-RUN go build -o main .
+COPY tmp/binary /app/start-container
 
-CMD ["/app/main"]
+CMD ["/app/start-container"]

@@ -1,0 +1,85 @@
+# it's just an example
+variables:
+  IMAGE_NAME: '${CI_REGISTRY}/${CI_PROJECT_NAMESPACE}/${CI_PROJECT_NAME}'
+  IMAGE_TAG: '${CI_PROJECT_NAME}.${CI_COMMIT_SHORT_SHA}'
+
+workflow:
+  rules:
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED && $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "deployment" && $CI_PIPELINE_SOURCE != "merge_request_event"
+
+stages:
+  - test
+  - build
+  - deploy
+
+test:
+  stage: test
+  image: 'golang:1.22.3-bullseye'
+  before_script:
+    - go mod tidy
+  script:
+    - |
+      go test -v
+
+compile binary:
+  stage: build
+  image: 'golang:1.22.3-bullseye'
+  variables:
+    GO111MODULE: 'on'
+    CGO_ENABLED: 0
+    GOOS: 'linux'
+  artifacts:
+    untracked: false
+    when: on_success
+    access: all
+    expire_in: '30 days'
+    name: 'build_output'
+    paths:
+      - 'tmp'
+  before_script:
+    - go mod tidy
+  script:
+    - go build -o tmp/binary .
+
+build docker image:
+  stage: build
+  needs:
+    - job: 'compile binary'
+      artifacts: true
+  variables:
+    DOCKER_TLS_CERTDIR: '/certs'
+  before_script:
+    - echo $CI_JOB_TOKEN | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+    - echo "$CI_REGISTRY $CI_REGISTRY_USER $CI_REGISTRY_IMAGE"
+  script:
+    - docker build --no-cache -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA -t $CI_REGISTRY_IMAGE .
+    - docker push $CI_REGISTRY_IMAGE --all-tags
+
+deploy to server:
+  allow_failure: true
+  when: manual
+  stage: deploy
+  rules:
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  variables:
+    COMMANDS:
+      "echo $CI_JOB_TOKEN | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin &&
+      docker ps -aqf name=$CI_PROJECT_NAME | xargs docker rm -f 2>/dev/null || true &&
+      docker run --name $CI_PROJECT_NAME \
+      --env APP_VERSION=$IMAGE_TAG \
+      --env-file /tmp/env.sh \
+      --volume /etc/localtime:/etc/localtime:ro \
+      --volume /etc/ssl/certs:/etc/ssl/certs:ro \
+      --publish $PUBLISH_PORT:8080 \
+      --restart unless-stopped \
+      --detach \
+      $CI_REGISTRY_IMAGE"
+  before_script:
+    - chmod 400 $SSH_PRIVATE_KEY
+    - scp -o StrictHostKeyChecking=no -i $SSH_PRIVATE_KEY -P $SERVER_PORT $ENV_FILE root@$SERVER_IP:/tmp/env.sh
+  script:
+    - ssh -o StrictHostKeyChecking=no -i $SSH_PRIVATE_KEY -p $SERVER_PORT root@$SERVER_IP $COMMANDS
+  after_script:
+    - ssh -o StrictHostKeyChecking=no -i $SSH_PRIVATE_KEY -p $SERVER_PORT root@$SERVER_IP "rm -v /tmp/env.sh"
