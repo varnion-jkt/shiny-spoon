@@ -64,8 +64,6 @@ build and push docker image:
   needs:
     - job: 'compile binary'
       artifacts: true
-  rules:
-    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED
   variables:
     DOCKER_TLS_CERTDIR: '/certs'
   before_script:
