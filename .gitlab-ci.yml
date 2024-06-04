@@ -15,9 +15,6 @@ workflow:
 compile binary:
   stage: build
   image: 'golang:1.22.3-bullseye'
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_REF_PROTECTED || $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED
   variables:
     GO111MODULE: 'on'
     CGO_ENABLED: 0
