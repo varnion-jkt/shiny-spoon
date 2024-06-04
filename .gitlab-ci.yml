@@ -2,6 +2,11 @@ variables:
   IMAGE_NAME: '${CI_REGISTRY}/${CI_PROJECT_NAMESPACE}/${CI_PROJECT_NAME}'
   IMAGE_TAG: '${CI_PROJECT_NAME}.${CI_COMMIT_SHORT_SHA}'
 
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED
+
 stages:
   - compile
   - build
@@ -13,6 +18,7 @@ compile binary:
   image: 'golang:1.22.3-bullseye'
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_PIPELINE_SOURCE == "push"
+    - if: $$CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED || $CI_COMMIT_REF_PROTECTED
   variables:
     GO111MODULE: 'on'
     CGO_ENABLED: 0
@@ -62,8 +68,6 @@ build and push docker image:
   needs:
     - job: 'compile binary'
       artifacts: true
-  rules:
-    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED
   variables:
     DOCKER_TLS_CERTDIR: '/certs'
   before_script:
