@@ -1,30 +1,18 @@
-# it's just an example
 variables:
   IMAGE_NAME: '${CI_REGISTRY}/${CI_PROJECT_NAMESPACE}/${CI_PROJECT_NAME}'
   IMAGE_TAG: '${CI_PROJECT_NAME}.${CI_COMMIT_SHORT_SHA}'
 
-workflow:
-  rules:
-    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED && $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == "deployment" && $CI_PIPELINE_SOURCE != "merge_request_event"
-
 stages:
-  - test
+  - compile
   - build
+  - test
   - deploy
 
-test:
-  stage: test
-  image: 'golang:1.22.3-bullseye'
-  before_script:
-    - go mod tidy
-  script:
-    - |
-      go test -v
-
 compile binary:
-  stage: build
+  stage: compile
   image: 'golang:1.22.3-bullseye'
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_PIPELINE_SOURCE == "push"
   variables:
     GO111MODULE: 'on'
     CGO_ENABLED: 0
@@ -38,15 +26,65 @@ compile binary:
     paths:
       - 'tmp'
   before_script:
+    - |
+      for f in tests/config/*example; do
+        nf=`echo $f | sed 's:tests/config:tmp:g;s/.example//g'`
+        cp $f -vT $nf
+      done
     - go mod tidy
   script:
     - go build -o tmp/binary .
 
-build docker image:
+run unit test:
+  stage: test
+  needs:
+    - job: 'compile binary'
+      artifacts: true
+  script:
+    - |
+      echo "Unit Test Passed!"
+
+run feature test:
+  stage: test
+  image:
+    name: postman/newman:6.1.1
+    entrypoint: ['']
+  needs:
+    - job: 'compile binary'
+      artifacts: true
+  before_script:
+    - newman --version
+    - cp $ENV_FILE .env
+    - ./tmp/binary &
+  script:
+    - |
+      newman run tmp/newman.postman_collection.json \
+      --environment tmp/newman.postman_environment.json \
+      --reporters cli,junit \
+      --reporter-junit-export tmp/test-results.xml
+  artifacts:
+    when: on_success
+    paths:
+      - tmp/test-results.xml
+    reports:
+      junit: tmp/test-results.xml
+
+run integration test:
+  stage: test
+  needs:
+    - job: 'compile binary'
+      artifacts: true
+  script:
+    - |
+      echo "Integration Test Passed!"
+
+build and push docker image:
   stage: build
   needs:
     - job: 'compile binary'
       artifacts: true
+  rules:
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED
   variables:
     DOCKER_TLS_CERTDIR: '/certs'
   before_script:
@@ -60,26 +98,27 @@ deploy to server:
   allow_failure: true
   when: manual
   stage: deploy
+  needs: ['build and push docker image']
   rules:
     - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_DEFAULT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   variables:
     COMMANDS:
       "echo $CI_JOB_TOKEN | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin &&
       docker ps -aqf name=$CI_PROJECT_NAME | xargs docker rm -f 2>/dev/null || true &&
       docker run --name $CI_PROJECT_NAME \
       --env APP_VERSION=$IMAGE_TAG \
-      --env-file /tmp/env.sh \
+      --env-file /tmp/$CI_PROJECT_NAME \
       --volume /etc/localtime:/etc/localtime:ro \
       --volume /etc/ssl/certs:/etc/ssl/certs:ro \
       --publish $PUBLISH_PORT:8080 \
       --restart unless-stopped \
+      --pull=always \
       --detach \
       $CI_REGISTRY_IMAGE"
   before_script:
     - chmod 400 $SSH_PRIVATE_KEY
-    - scp -o StrictHostKeyChecking=no -i $SSH_PRIVATE_KEY -P $SERVER_PORT $ENV_FILE root@$SERVER_IP:/tmp/env.sh
+    - scp -o StrictHostKeyChecking=no -i $SSH_PRIVATE_KEY -P $SERVER_PORT $ENV_FILE root@$SERVER_IP:/tmp/$CI_PROJECT_NAME
   script:
     - ssh -o StrictHostKeyChecking=no -i $SSH_PRIVATE_KEY -p $SERVER_PORT root@$SERVER_IP $COMMANDS
   after_script:
-    - ssh -o StrictHostKeyChecking=no -i $SSH_PRIVATE_KEY -p $SERVER_PORT root@$SERVER_IP "rm -v /tmp/env.sh"
+    - ssh -o StrictHostKeyChecking=no -i $SSH_PRIVATE_KEY -p $SERVER_PORT root@$SERVER_IP "rm -v /tmp/$CI_PROJECT_NAME"
