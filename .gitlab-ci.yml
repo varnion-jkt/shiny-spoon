@@ -7,13 +7,12 @@ workflow:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 stages:
-  - compile
   - build
   - test
   - deploy
 
 compile binary:
-  stage: compile
+  stage: build
   image: 'golang:1.22.3-bullseye'
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_PIPELINE_SOURCE == "push"
@@ -63,7 +62,7 @@ run feature test:
       echo "Feature Test Passed!"
 
 build and push docker image:
-  stage: build
+  stage: deploy
   needs:
     - job: 'compile binary'
       artifacts: true
