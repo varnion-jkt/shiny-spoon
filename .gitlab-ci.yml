@@ -4,7 +4,8 @@ variables:
 
 workflow:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_PIPELINE_SOURCE == "push"
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED || $CI_COMMIT_REF_PROTECTED
 
 stages:
   - build
@@ -14,9 +15,6 @@ stages:
 compile binary:
   stage: build
   image: 'golang:1.22.3-bullseye'
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event" || $CI_PIPELINE_SOURCE == "push"
-    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED || $CI_COMMIT_REF_PROTECTED
   variables:
     GO111MODULE: 'on'
     CGO_ENABLED: 0
