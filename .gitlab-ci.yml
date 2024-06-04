@@ -7,10 +7,10 @@ stages:
   - test
   - deploy
 
-.test_rules: &test_rules
+workflow:
   rules:
-    - if: $CI_PIPELINE_SOURCE == "push" || $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_REF_PROTECTED
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED
 
 compile binary:
   stage: build
@@ -34,7 +34,6 @@ compile binary:
     - go mod tidy
   script:
     - go build -o tmp/binary .
-  <<: *test_rules
 
 run unit test:
   stage: test
@@ -44,7 +43,6 @@ run unit test:
   script:
     - |
       echo "Unit Test Passed!"
-  <<: *test_rules
 
 run integration test:
   stage: test
@@ -54,7 +52,6 @@ run integration test:
   script:
     - |
       echo "Integration Test Passed!"
-  <<: *test_rules
 
 run feature test:
   stage: test
@@ -64,15 +61,12 @@ run feature test:
   script:
     - |
       echo "Feature Test Passed!"
-  <<: *test_rules
 
 build and push docker image:
   stage: deploy
   needs:
     - job: 'compile binary'
       artifacts: true
-  rules:
-    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED
   variables:
     DOCKER_TLS_CERTDIR: '/certs'
   before_script:
