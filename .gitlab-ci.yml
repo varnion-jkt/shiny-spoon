@@ -9,11 +9,9 @@ stages:
 
 workflow:
   rules:
-    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
-      when: always
-    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED
-      when: always
-    - when: never
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED == "false"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
 
 compile binary:
   stage: build
