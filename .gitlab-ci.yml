@@ -2,16 +2,16 @@ variables:
   IMAGE_NAME: '${CI_REGISTRY}/${CI_PROJECT_NAMESPACE}/${CI_PROJECT_NAME}'
   IMAGE_TAG: '${CI_PROJECT_NAME}.${CI_COMMIT_SHORT_SHA}'
 
-stages:
-  - build
-  - test
-  - deploy
-
 workflow:
   rules:
     - if: $CI_MERGE_REQUEST_TARGET_BRANCH_PROTECTED == "false"
       when: never
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+stages:
+  - build
+  - test
+  - deploy
 
 compile binary:
   stage: build
