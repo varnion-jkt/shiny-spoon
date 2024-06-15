@@ -60,28 +60,43 @@ run feature test:
     - |
       echo "Feature Test Passed!"
 
-build and push docker image:
+.build_image:
   stage: deploy
   needs:
-    - job: 'compile binary'
+    - job: compile binary
       artifacts: true
   variables:
     DOCKER_TLS_CERTDIR: '/certs'
   before_script:
+    - echo $CI_REGISTRY_IMAGE
     - echo $CI_JOB_TOKEN | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
-    - echo "$CI_REGISTRY $CI_REGISTRY_USER $CI_REGISTRY_IMAGE"
   script:
-    - docker build --no-cache -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA -t $CI_REGISTRY_IMAGE .
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA -t $CI_REGISTRY_IMAGE --no-cache .
     - docker push $CI_REGISTRY_IMAGE --all-tags
+
+build and push docker image:production:
+  extends: .build_image
+  rules:
+    - if: $CI_COMMIT_REF_NAME != $CI_DEFAULT_BRANCH
+      variables:
+        CI_REGISTRY_IMAGE: '$CI_REGISTRY_IMAGE/master'
+
+build and push docker image:staging:
+  extends: .build_image
+  rules:
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+      variables:
+        CI_REGISTRY_IMAGE: '$CI_REGISTRY_IMAGE/staging'
 
 deploy to server:
   allow_failure: true
   when: manual
   stage: deploy
-  needs: ['build and push docker image']
+  needs: ['build and push docker image:staging']
   rules:
-    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
   variables:
+    CI_REGISTRY_IMAGE: '$CI_REGISTRY_IMAGE/staging'
     COMMANDS:
       "echo $CI_JOB_TOKEN | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin &&
       docker ps -aqf name=$CI_PROJECT_NAME | xargs docker rm -f 2>/dev/null || true &&
